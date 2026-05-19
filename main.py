@@ -15,7 +15,10 @@ from PyQt6.QtWidgets import (
     QListWidgetItem
 )
 
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import (
+    QAction,
+    QIcon
+)
 
 from PyQt6.QtCore import Qt
 
@@ -31,7 +34,7 @@ class TransparencyManager:
 
     def __init__(self):
 
-        # 默认透明度改为 127
+        # 默认透明度
         self.alpha = 127
 
         # 已透明窗口
@@ -168,6 +171,9 @@ class MainWindow(QWidget):
             "Window Transparency Tool"
         )
 
+        # 使用 icon.ico
+        self.setWindowIcon(QIcon("icon.ico"))
+
         self.resize(500, 650)
 
         self.setStyleSheet("""
@@ -243,7 +249,7 @@ class MainWindow(QWidget):
 
         self.slider.setMaximum(255)
 
-        # 默认值改为 127
+        # 默认值 127
         self.slider.setValue(127)
 
         self.slider.valueChanged.connect(
@@ -333,11 +339,8 @@ class MainWindow(QWidget):
 
         self.tray = QSystemTrayIcon(self)
 
-        self.tray.setIcon(
-            self.style().standardIcon(
-                self.style().StandardPixmap.SP_ComputerIcon
-            )
-        )
+        # 使用 icon.ico
+        self.tray.setIcon(QIcon("icon.ico"))
 
         menu = QMenu()
 
