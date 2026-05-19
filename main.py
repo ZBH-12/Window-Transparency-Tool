@@ -1,3 +1,4 @@
+import os
 import sys
 
 from PyQt6.QtWidgets import (
@@ -27,6 +28,24 @@ import win32con
 
 
 # =========================================
+# 资源路径
+# =========================================
+
+def resource_path(relative_path):
+
+    try:
+        base_path = sys._MEIPASS
+
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(
+        base_path,
+        relative_path
+    )
+
+
+# =========================================
 # 透明管理器
 # =========================================
 
@@ -51,7 +70,7 @@ class TransparencyManager:
             win32con.GWL_EXSTYLE
         )
 
-        # 添加 WS_EX_LAYERED
+        # 添加分层窗口样式
         if not (style & win32con.WS_EX_LAYERED):
 
             win32gui.SetWindowLong(
@@ -67,7 +86,7 @@ class TransparencyManager:
             win32con.LWA_ALPHA
         )
 
-    # 恢复所有窗口
+    # 恢复全部窗口
     def restore_all(self):
 
         for hwnd in list(self.changed_windows):
@@ -85,7 +104,10 @@ class TransparencyManager:
 
         try:
 
-            self.set_alpha(hwnd, self.alpha)
+            self.set_alpha(
+                hwnd,
+                self.alpha
+            )
 
             self.changed_windows.add(hwnd)
 
@@ -103,6 +125,7 @@ class TransparencyManager:
             pass
 
         if hwnd in self.changed_windows:
+
             self.changed_windows.remove(hwnd)
 
     # 是否忽略窗口
@@ -136,9 +159,14 @@ class TransparencyManager:
 
             title = win32gui.GetWindowText(hwnd)
 
-            result.append((hwnd, title))
+            result.append(
+                (hwnd, title)
+            )
 
-        win32gui.EnumWindows(callback, None)
+        win32gui.EnumWindows(
+            callback,
+            None
+        )
 
         return result
 
@@ -162,7 +190,7 @@ class MainWindow(QWidget):
         self.refresh_window_list()
 
     # =====================================
-    # UI
+    # 初始化 UI
     # =====================================
 
     def init_ui(self):
@@ -171,8 +199,12 @@ class MainWindow(QWidget):
             "Window Transparency Tool"
         )
 
-        # 使用 icon.ico
-        self.setWindowIcon(QIcon("icon.ico"))
+        # 设置窗口图标
+        self.setWindowIcon(
+            QIcon(
+                resource_path("icon.ico")
+            )
+        )
 
         self.resize(500, 650)
 
@@ -230,7 +262,7 @@ class MainWindow(QWidget):
 
         layout.addWidget(title)
 
-        # 透明度文字
+        # 透明度标题
         alpha_text = QLabel("透明度")
 
         alpha_text.setAlignment(
@@ -244,12 +276,10 @@ class MainWindow(QWidget):
             Qt.Orientation.Horizontal
         )
 
-        # 下限 0
         self.slider.setMinimum(0)
 
         self.slider.setMaximum(255)
 
-        # 默认值 127
         self.slider.setValue(127)
 
         self.slider.valueChanged.connect(
@@ -339,8 +369,12 @@ class MainWindow(QWidget):
 
         self.tray = QSystemTrayIcon(self)
 
-        # 使用 icon.ico
-        self.tray.setIcon(QIcon("icon.ico"))
+        # 托盘图标
+        self.tray.setIcon(
+            QIcon(
+                resource_path("icon.ico")
+            )
+        )
 
         menu = QMenu()
 
@@ -381,9 +415,13 @@ class MainWindow(QWidget):
         )
 
         menu.addAction(show_action)
+
         menu.addAction(refresh_action)
+
         menu.addAction(restore_action)
+
         menu.addSeparator()
+
         menu.addAction(quit_action)
 
         self.tray.setContextMenu(menu)
@@ -460,10 +498,13 @@ class MainWindow(QWidget):
 
         self.alpha_label.setText(str(value))
 
-        # 实时更新所有透明窗口
+        # 实时更新
         for hwnd in self.manager.changed_windows:
 
-            self.manager.set_alpha(hwnd, value)
+            self.manager.set_alpha(
+                hwnd,
+                value
+            )
 
     # =====================================
     # 恢复全部
@@ -505,7 +546,7 @@ class MainWindow(QWidget):
         )
 
     # =====================================
-    # 退出
+    # 退出程序
     # =====================================
 
     def quit_app(self):
