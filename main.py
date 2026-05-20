@@ -92,6 +92,7 @@ class TransparencyManager:
 
             try:
                 self.set_alpha(hwnd, 255)
+
             except:
                 pass
 
@@ -193,6 +194,9 @@ class AutoClicker:
         if not self.hwnd:
             return
 
+        if not self.point:
+            return
+
         x, y = self.point
 
         lParam = win32api.MAKELONG(
@@ -265,7 +269,7 @@ class MainWindow(QWidget):
 
         self.clicker = AutoClicker()
 
-        self.target_hwnd = None
+        self.selected_click_hwnd = None
 
         self.target_point = None
 
@@ -291,7 +295,7 @@ class MainWindow(QWidget):
             )
         )
 
-        self.resize(550, 800)
+        self.resize(550, 850)
 
         self.setStyleSheet("""
             QWidget {
@@ -316,9 +320,26 @@ class MainWindow(QWidget):
                 border-radius: 10px;
                 padding: 5px;
             }
+
+            QSlider::groove:horizontal {
+                background: #444444;
+                height: 8px;
+                border-radius: 4px;
+            }
+
+            QSlider::handle:horizontal {
+                background: #808080;
+                width: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
+            }
         """)
 
         layout = QVBoxLayout()
+
+        # =====================================
+        # 标题
+        # =====================================
 
         title = QLabel(
             "窗口透明器 + 自动点击器"
@@ -335,9 +356,9 @@ class MainWindow(QWidget):
 
         layout.addWidget(title)
 
-        # =========================
+        # =====================================
         # 透明度
-        # =========================
+        # =====================================
 
         alpha_text = QLabel(
             "透明度"
@@ -373,9 +394,9 @@ class MainWindow(QWidget):
 
         layout.addWidget(self.alpha_label)
 
-        # =========================
+        # =====================================
         # 刷新按钮
-        # =========================
+        # =====================================
 
         self.refresh_button = QPushButton(
             "刷新窗口列表"
@@ -389,9 +410,19 @@ class MainWindow(QWidget):
             self.refresh_button
         )
 
-        # =========================
+        # =====================================
         # 窗口列表
-        # =========================
+        # =====================================
+
+        window_label = QLabel(
+            "窗口列表（点击即可设为自动点击目标）"
+        )
+
+        window_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        layout.addWidget(window_label)
 
         self.window_list = QListWidget()
 
@@ -399,11 +430,15 @@ class MainWindow(QWidget):
             self.handle_item_changed
         )
 
+        self.window_list.itemClicked.connect(
+            self.handle_item_clicked
+        )
+
         layout.addWidget(self.window_list)
 
-        # =========================
+        # =====================================
         # 自动点击
-        # =========================
+        # =====================================
 
         click_title = QLabel(
             "后台自动点击"
@@ -421,7 +456,7 @@ class MainWindow(QWidget):
         layout.addWidget(click_title)
 
         self.target_label = QLabel(
-            "当前目标：未选择"
+            "当前点击窗口：未选择"
         )
 
         self.target_label.setAlignment(
@@ -432,8 +467,20 @@ class MainWindow(QWidget):
             self.target_label
         )
 
+        self.point_label = QLabel(
+            "当前点击坐标：未设置"
+        )
+
+        self.point_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        layout.addWidget(
+            self.point_label
+        )
+
         self.select_button = QPushButton(
-            "选择点击位置（按F8）"
+            "记录点击坐标（按 Ctrl+B）"
         )
 
         self.select_button.clicked.connect(
@@ -443,6 +490,10 @@ class MainWindow(QWidget):
         layout.addWidget(
             self.select_button
         )
+
+        # =====================================
+        # 点击间隔
+        # =====================================
 
         interval_layout = QHBoxLayout()
 
@@ -471,6 +522,10 @@ class MainWindow(QWidget):
         layout.addLayout(
             interval_layout
         )
+
+        # =====================================
+        # 点击按钮
+        # =====================================
 
         click_button_layout = QHBoxLayout()
 
@@ -502,9 +557,9 @@ class MainWindow(QWidget):
             click_button_layout
         )
 
-        # =========================
+        # =====================================
         # 底部按钮
-        # =========================
+        # =====================================
 
         bottom_layout = QHBoxLayout()
 
@@ -535,6 +590,24 @@ class MainWindow(QWidget):
         layout.addLayout(
             bottom_layout
         )
+
+        # =====================================
+        # 使用说明
+        # =====================================
+
+        info = QLabel(
+            "操作流程：\n"
+            "1. 点击窗口列表选择目标窗口\n"
+            "2. 鼠标移动到目标位置\n"
+            "3. 按 Ctrl+B 记录坐标\n"
+            "4. 点击开始自动点击"
+        )
+
+        info.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        layout.addWidget(info)
 
         self.setLayout(layout)
 
@@ -625,6 +698,24 @@ class MainWindow(QWidget):
         self.window_list.blockSignals(False)
 
     # =====================================
+    # 点击窗口列表
+    # =====================================
+
+    def handle_item_clicked(self, item):
+
+        hwnd = item.data(
+            Qt.ItemDataRole.UserRole
+        )
+
+        self.selected_click_hwnd = hwnd
+
+        title = item.text()
+
+        self.target_label.setText(
+            f"当前点击窗口：{title}"
+        )
+
+    # =====================================
     # 勾选透明
     # =====================================
 
@@ -666,48 +757,62 @@ class MainWindow(QWidget):
             )
 
     # =====================================
-    # 选择目标
+    # 记录点击坐标
     # =====================================
 
     def select_target(self):
 
+        if not self.selected_click_hwnd:
+
+            QMessageBox.warning(
+                self,
+                "错误",
+                "请先在窗口列表中选择窗口"
+            )
+
+            return
+
         QMessageBox.information(
             self,
             "提示",
-            "请把鼠标移动到目标位置，然后按 F8"
+            "请把鼠标移动到目标位置，然后按 Ctrl+B"
         )
 
         threading.Thread(
-            target=self.wait_f8,
+            target=self.wait_hotkey,
             daemon=True
         ).start()
 
-    def wait_f8(self):
+    def wait_hotkey(self):
 
         while True:
 
-            if win32api.GetAsyncKeyState(
-                win32con.VK_F8
-            ) & 1:
+            ctrl_down = (
+                win32api.GetAsyncKeyState(
+                    win32con.VK_CONTROL
+                ) & 0x8000
+            )
+
+            b_down = (
+                win32api.GetAsyncKeyState(
+                    ord('B')
+                ) & 1
+            )
+
+            if ctrl_down and b_down:
+
+                hwnd = self.selected_click_hwnd
 
                 screen_point = (
                     win32gui.GetCursorPos()
                 )
 
-                hwnd = win32gui.WindowFromPoint(
-                    screen_point
+                client_point = (
+                    win32gui.ScreenToClient(
+                        hwnd,
+                        screen_point
+                    )
                 )
-
-                title = win32gui.GetWindowText(
-                    hwnd
-                )
-
-                client_point = win32gui.ScreenToClient(
-                    hwnd,
-                    screen_point
-                )
-
-                self.target_hwnd = hwnd
 
                 self.target_point = client_point
 
@@ -716,8 +821,8 @@ class MainWindow(QWidget):
                     client_point
                 )
 
-                self.target_label.setText(
-                    f"当前目标：{title} "
+                self.point_label.setText(
+                    f"当前点击坐标："
                     f"({client_point[0]}, "
                     f"{client_point[1]})"
                 )
@@ -727,17 +832,27 @@ class MainWindow(QWidget):
             time.sleep(0.01)
 
     # =====================================
-    # 开始点击
+    # 开始自动点击
     # =====================================
 
     def start_clicking(self):
 
-        if not self.target_hwnd:
+        if not self.selected_click_hwnd:
 
             QMessageBox.warning(
                 self,
                 "错误",
-                "请先选择目标"
+                "未选择窗口"
+            )
+
+            return
+
+        if not self.target_point:
+
+            QMessageBox.warning(
+                self,
+                "错误",
+                "未设置点击坐标"
             )
 
             return
@@ -755,7 +870,7 @@ class MainWindow(QWidget):
         )
 
     # =====================================
-    # 停止点击
+    # 停止自动点击
     # =====================================
 
     def stop_clicking(self):
