@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+import threading
 
 from PyQt6.QtWidgets import (
     QApplication,
@@ -13,7 +15,8 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMessageBox,
     QListWidget,
-    QListWidgetItem
+    QListWidgetItem,
+    QSpinBox
 )
 
 from PyQt6.QtGui import (
@@ -25,6 +28,7 @@ from PyQt6.QtCore import Qt
 
 import win32gui
 import win32con
+import win32api
 
 
 # =========================================
@@ -53,13 +57,10 @@ class TransparencyManager:
 
     def __init__(self):
 
-        # 默认透明度
         self.alpha = 127
 
-        # 已透明窗口
         self.changed_windows = set()
 
-    # 设置窗口透明度
     def set_alpha(self, hwnd, alpha):
 
         if not win32gui.IsWindow(hwnd):
@@ -70,7 +71,6 @@ class TransparencyManager:
             win32con.GWL_EXSTYLE
         )
 
-        # 添加分层窗口样式
         if not (style & win32con.WS_EX_LAYERED):
 
             win32gui.SetWindowLong(
@@ -86,20 +86,17 @@ class TransparencyManager:
             win32con.LWA_ALPHA
         )
 
-    # 恢复全部窗口
     def restore_all(self):
 
         for hwnd in list(self.changed_windows):
 
             try:
                 self.set_alpha(hwnd, 255)
-
             except:
                 pass
 
         self.changed_windows.clear()
 
-    # 透明化窗口
     def make_transparent(self, hwnd):
 
         try:
@@ -114,21 +111,16 @@ class TransparencyManager:
         except:
             pass
 
-    # 恢复窗口
     def restore_window(self, hwnd):
 
         try:
-
             self.set_alpha(hwnd, 255)
-
         except:
             pass
 
         if hwnd in self.changed_windows:
-
             self.changed_windows.remove(hwnd)
 
-    # 是否忽略窗口
     def ignore_window(self, hwnd):
 
         if hwnd == 0:
@@ -147,7 +139,6 @@ class TransparencyManager:
 
         return False
 
-    # 枚举窗口
     def enum_windows(self):
 
         result = []
@@ -159,9 +150,7 @@ class TransparencyManager:
 
             title = win32gui.GetWindowText(hwnd)
 
-            result.append(
-                (hwnd, title)
-            )
+            result.append((hwnd, title))
 
         win32gui.EnumWindows(
             callback,
@@ -169,6 +158,97 @@ class TransparencyManager:
         )
 
         return result
+
+
+# =========================================
+# 后台点击器
+# =========================================
+
+class AutoClicker:
+
+    def __init__(self):
+
+        self.running = False
+
+        self.thread = None
+
+        self.hwnd = None
+
+        self.point = None
+
+        self.interval = 60
+
+    def set_target(
+        self,
+        hwnd,
+        point
+    ):
+
+        self.hwnd = hwnd
+
+        self.point = point
+
+    def click_once(self):
+
+        if not self.hwnd:
+            return
+
+        x, y = self.point
+
+        lParam = win32api.MAKELONG(
+            x,
+            y
+        )
+
+        win32gui.PostMessage(
+            self.hwnd,
+            win32con.WM_MOUSEMOVE,
+            0,
+            lParam
+        )
+
+        win32gui.PostMessage(
+            self.hwnd,
+            win32con.WM_LBUTTONDOWN,
+            win32con.MK_LBUTTON,
+            lParam
+        )
+
+        win32gui.PostMessage(
+            self.hwnd,
+            win32con.WM_LBUTTONUP,
+            0,
+            lParam
+        )
+
+    def loop(self):
+
+        while self.running:
+
+            try:
+                self.click_once()
+            except:
+                pass
+
+            time.sleep(self.interval)
+
+    def start(self):
+
+        if self.running:
+            return
+
+        self.running = True
+
+        self.thread = threading.Thread(
+            target=self.loop,
+            daemon=True
+        )
+
+        self.thread.start()
+
+    def stop(self):
+
+        self.running = False
 
 
 # =========================================
@@ -183,6 +263,12 @@ class MainWindow(QWidget):
 
         self.manager = TransparencyManager()
 
+        self.clicker = AutoClicker()
+
+        self.target_hwnd = None
+
+        self.target_point = None
+
         self.init_ui()
 
         self.init_tray()
@@ -190,23 +276,22 @@ class MainWindow(QWidget):
         self.refresh_window_list()
 
     # =====================================
-    # 初始化 UI
+    # UI
     # =====================================
 
     def init_ui(self):
 
         self.setWindowTitle(
-            "Window Transparency Tool"
+            "Window Tool"
         )
 
-        # 设置窗口图标
         self.setWindowIcon(
             QIcon(
                 resource_path("icon.ico")
             )
         )
 
-        self.resize(500, 650)
+        self.resize(550, 800)
 
         self.setStyleSheet("""
             QWidget {
@@ -231,25 +316,13 @@ class MainWindow(QWidget):
                 border-radius: 10px;
                 padding: 5px;
             }
-
-            QSlider::groove:horizontal {
-                background: #444444;
-                height: 8px;
-                border-radius: 4px;
-            }
-
-            QSlider::handle:horizontal {
-                background: #808080;
-                width: 18px;
-                margin: -5px 0;
-                border-radius: 9px;
-            }
         """)
 
         layout = QVBoxLayout()
 
-        # 标题
-        title = QLabel("窗口透明工具")
+        title = QLabel(
+            "窗口透明器 + 自动点击器"
+        )
 
         title.setAlignment(
             Qt.AlignmentFlag.AlignCenter
@@ -262,8 +335,13 @@ class MainWindow(QWidget):
 
         layout.addWidget(title)
 
-        # 透明度标题
-        alpha_text = QLabel("透明度")
+        # =========================
+        # 透明度
+        # =========================
+
+        alpha_text = QLabel(
+            "透明度"
+        )
 
         alpha_text.setAlignment(
             Qt.AlignmentFlag.AlignCenter
@@ -271,7 +349,6 @@ class MainWindow(QWidget):
 
         layout.addWidget(alpha_text)
 
-        # 滑块
         self.slider = QSlider(
             Qt.Orientation.Horizontal
         )
@@ -288,7 +365,6 @@ class MainWindow(QWidget):
 
         layout.addWidget(self.slider)
 
-        # 当前透明度显示
         self.alpha_label = QLabel("127")
 
         self.alpha_label.setAlignment(
@@ -297,7 +373,10 @@ class MainWindow(QWidget):
 
         layout.addWidget(self.alpha_label)
 
+        # =========================
         # 刷新按钮
+        # =========================
+
         self.refresh_button = QPushButton(
             "刷新窗口列表"
         )
@@ -306,9 +385,14 @@ class MainWindow(QWidget):
             self.refresh_window_list
         )
 
-        layout.addWidget(self.refresh_button)
+        layout.addWidget(
+            self.refresh_button
+        )
 
+        # =========================
         # 窗口列表
+        # =========================
+
         self.window_list = QListWidget()
 
         self.window_list.itemChanged.connect(
@@ -317,8 +401,112 @@ class MainWindow(QWidget):
 
         layout.addWidget(self.window_list)
 
+        # =========================
+        # 自动点击
+        # =========================
+
+        click_title = QLabel(
+            "后台自动点击"
+        )
+
+        click_title.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        click_title.setStyleSheet("""
+            font-size: 22px;
+            font-weight: bold;
+        """)
+
+        layout.addWidget(click_title)
+
+        self.target_label = QLabel(
+            "当前目标：未选择"
+        )
+
+        self.target_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        layout.addWidget(
+            self.target_label
+        )
+
+        self.select_button = QPushButton(
+            "选择点击位置（按F8）"
+        )
+
+        self.select_button.clicked.connect(
+            self.select_target
+        )
+
+        layout.addWidget(
+            self.select_button
+        )
+
+        interval_layout = QHBoxLayout()
+
+        interval_text = QLabel(
+            "点击间隔（秒）"
+        )
+
+        interval_layout.addWidget(
+            interval_text
+        )
+
+        self.interval_box = QSpinBox()
+
+        self.interval_box.setMinimum(1)
+
+        self.interval_box.setMaximum(
+            999999
+        )
+
+        self.interval_box.setValue(60)
+
+        interval_layout.addWidget(
+            self.interval_box
+        )
+
+        layout.addLayout(
+            interval_layout
+        )
+
+        click_button_layout = QHBoxLayout()
+
+        self.start_click_button = QPushButton(
+            "开始自动点击"
+        )
+
+        self.start_click_button.clicked.connect(
+            self.start_clicking
+        )
+
+        self.stop_click_button = QPushButton(
+            "停止自动点击"
+        )
+
+        self.stop_click_button.clicked.connect(
+            self.stop_clicking
+        )
+
+        click_button_layout.addWidget(
+            self.start_click_button
+        )
+
+        click_button_layout.addWidget(
+            self.stop_click_button
+        )
+
+        layout.addLayout(
+            click_button_layout
+        )
+
+        # =========================
         # 底部按钮
-        button_layout = QHBoxLayout()
+        # =========================
+
+        bottom_layout = QHBoxLayout()
 
         self.restore_button = QPushButton(
             "恢复全部窗口"
@@ -336,28 +524,17 @@ class MainWindow(QWidget):
             self.clear_list
         )
 
-        button_layout.addWidget(
+        bottom_layout.addWidget(
             self.restore_button
         )
 
-        button_layout.addWidget(
+        bottom_layout.addWidget(
             self.clear_button
         )
 
-        layout.addLayout(button_layout)
-
-        # 提示
-        info = QLabel(
-            "勾选窗口即可透明化\n"
-            "取消勾选即可恢复\n"
-            "0 = 完全不可见"
+        layout.addLayout(
+            bottom_layout
         )
-
-        info.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        layout.addWidget(info)
 
         self.setLayout(layout)
 
@@ -369,7 +546,6 @@ class MainWindow(QWidget):
 
         self.tray = QSystemTrayIcon(self)
 
-        # 托盘图标
         self.tray.setIcon(
             QIcon(
                 resource_path("icon.ico")
@@ -387,24 +563,6 @@ class MainWindow(QWidget):
             self.show
         )
 
-        refresh_action = QAction(
-            "刷新窗口列表",
-            self
-        )
-
-        refresh_action.triggered.connect(
-            self.refresh_window_list
-        )
-
-        restore_action = QAction(
-            "恢复全部窗口",
-            self
-        )
-
-        restore_action.triggered.connect(
-            self.restore_windows
-        )
-
         quit_action = QAction(
             "退出",
             self
@@ -415,10 +573,6 @@ class MainWindow(QWidget):
         )
 
         menu.addAction(show_action)
-
-        menu.addAction(refresh_action)
-
-        menu.addAction(restore_action)
 
         menu.addSeparator()
 
@@ -471,7 +625,7 @@ class MainWindow(QWidget):
         self.window_list.blockSignals(False)
 
     # =====================================
-    # 勾选事件
+    # 勾选透明
     # =====================================
 
     def handle_item_changed(self, item):
@@ -482,11 +636,15 @@ class MainWindow(QWidget):
 
         if item.checkState() == Qt.CheckState.Checked:
 
-            self.manager.make_transparent(hwnd)
+            self.manager.make_transparent(
+                hwnd
+            )
 
         else:
 
-            self.manager.restore_window(hwnd)
+            self.manager.restore_window(
+                hwnd
+            )
 
     # =====================================
     # 修改透明度
@@ -496,9 +654,10 @@ class MainWindow(QWidget):
 
         self.manager.alpha = value
 
-        self.alpha_label.setText(str(value))
+        self.alpha_label.setText(
+            str(value)
+        )
 
-        # 实时更新
         for hwnd in self.manager.changed_windows:
 
             self.manager.set_alpha(
@@ -507,7 +666,110 @@ class MainWindow(QWidget):
             )
 
     # =====================================
-    # 恢复全部
+    # 选择目标
+    # =====================================
+
+    def select_target(self):
+
+        QMessageBox.information(
+            self,
+            "提示",
+            "请把鼠标移动到目标位置，然后按 F8"
+        )
+
+        threading.Thread(
+            target=self.wait_f8,
+            daemon=True
+        ).start()
+
+    def wait_f8(self):
+
+        while True:
+
+            if win32api.GetAsyncKeyState(
+                win32con.VK_F8
+            ) & 1:
+
+                screen_point = (
+                    win32gui.GetCursorPos()
+                )
+
+                hwnd = win32gui.WindowFromPoint(
+                    screen_point
+                )
+
+                title = win32gui.GetWindowText(
+                    hwnd
+                )
+
+                client_point = win32gui.ScreenToClient(
+                    hwnd,
+                    screen_point
+                )
+
+                self.target_hwnd = hwnd
+
+                self.target_point = client_point
+
+                self.clicker.set_target(
+                    hwnd,
+                    client_point
+                )
+
+                self.target_label.setText(
+                    f"当前目标：{title} "
+                    f"({client_point[0]}, "
+                    f"{client_point[1]})"
+                )
+
+                break
+
+            time.sleep(0.01)
+
+    # =====================================
+    # 开始点击
+    # =====================================
+
+    def start_clicking(self):
+
+        if not self.target_hwnd:
+
+            QMessageBox.warning(
+                self,
+                "错误",
+                "请先选择目标"
+            )
+
+            return
+
+        self.clicker.interval = (
+            self.interval_box.value()
+        )
+
+        self.clicker.start()
+
+        QMessageBox.information(
+            self,
+            "完成",
+            "自动点击已启动"
+        )
+
+    # =====================================
+    # 停止点击
+    # =====================================
+
+    def stop_clicking(self):
+
+        self.clicker.stop()
+
+        QMessageBox.information(
+            self,
+            "完成",
+            "自动点击已停止"
+        )
+
+    # =====================================
+    # 恢复窗口
     # =====================================
 
     def restore_windows(self):
@@ -515,12 +777,6 @@ class MainWindow(QWidget):
         self.manager.restore_all()
 
         self.refresh_window_list()
-
-        QMessageBox.information(
-            self,
-            "完成",
-            "所有窗口已恢复"
-        )
 
     # =====================================
     # 清空列表
@@ -541,15 +797,17 @@ class MainWindow(QWidget):
         self.hide()
 
         self.tray.showMessage(
-            "窗口透明工具",
+            "Window Tool",
             "程序已最小化到托盘"
         )
 
     # =====================================
-    # 退出程序
+    # 退出
     # =====================================
 
     def quit_app(self):
+
+        self.clicker.stop()
 
         self.manager.restore_all()
 
